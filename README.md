@@ -1,43 +1,135 @@
-# Guacamole OAuth2 Authentication Module
+# Guacamole OAuth2 Authentication Extension
 
-This project provides an OAuth2-based authentication extension for [Apache Guacamole](https://guacamole.apache.org/). It enables Single Sign-On (SSO) by integrating with an external OAuth2 identity provider.
+An OAuth2 Authorization Code Flow extension for [Apache Guacamole](https://guacamole.apache.org/) 1.6.0. Enables Single Sign-On (SSO) with any standard OAuth2/OIDC identity provider.
 
----
+Guacamole's bundled OpenID extension only supports the implicit flow (`response_type=id_token`). This extension implements the authorization code flow (`response_type=code`), which is the recommended approach for server-side applications per [OAuth 2.0 Security Best Practices](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics).
 
-## 🔧 Installation
+## How it works
 
-1. Build the module and place the generated `.jar` file into the Guacamole extensions directory:
+1. User visits Guacamole and is redirected to the OAuth2 authorization endpoint
+2. User authenticates with the identity provider
+3. IdP redirects back to Guacamole with an authorization code
+4. Guacamole exchanges the code for an access token (server-side)
+5. Guacamole calls the userinfo endpoint to retrieve username and groups
+6. User is authenticated and a Guacamole session is created
 
-```/etc/guacamole/extensions/```
+## Installation
 
+1. Build the extension (see [Building](#building) below)
 
-2. Add the following configuration to your `guacamole.properties` file, adjusting values according to your OAuth2 provider.
+2. Copy the JAR to the Guacamole extensions directory:
 
+   ```
+   cp target/guacamole-auth-sso-oauth2-1.6.0.jar /etc/guacamole/extensions/
+   ```
 
-## 🛠️ Sample `guacamole.properties` Configuration
+3. Configure `guacamole.properties` (see below)
+
+4. Restart Guacamole (typically Tomcat):
+
+   ```
+   sudo systemctl restart tomcat9
+   ```
+
+## Configuration
+
+Add the following to your `guacamole.properties` file:
 
 ```properties
-# Use the OAuth2 module as the authentication provider
-auth-provider: net.sourceforge.guacamole.net.auth.oauth2.OAuth2AuthenticationProvider
+# OAuth2 endpoints (required)
+oauth2-authorization-endpoint: https://idp.example.com/oauth2/authorize
+oauth2-token-endpoint: https://idp.example.com/oauth2/token
+oauth2-user-info-endpoint: https://idp.example.com/oauth2/userinfo
 
-# OAuth2 endpoints
-oauth2-authorization-endpoint: https://oauth2.example.com/oauth/authorize
-oauth2-token-endpoint: https://oauth2.example.com/oauth/token
-oauth2-user-info-endpoint: https://oauth2.example.com/api/user
-oauth2-issuer: https://oauth2.example.com
+# OAuth2 client credentials (required)
+oauth2-client-id: guacamole
+oauth2-client-secret: your-client-secret
+oauth2-redirect-uri: https://guacamole.example.com/guacamole/
 
-# OAuth2 client credentials
-oauth2-client-id: ***
-oauth2-client-secret: ***
-oauth2-redirect-uri: https://guacamole.example.com
+# Scopes to request (default: "email profile")
+# Use space-separated values per OAuth2 spec
+oauth2-scope: openid email profile
 
-# Requested scopes
-oauth2-scope: email, mobile
+# Claim used as the Guacamole username (default: "username")
+oauth2-username-claim-type: preferred_username
 
-# (Optional) Enforce OAuth2 login by giving this extension highest priority
+# Claim containing group memberships (default: "groups")
+oauth2-groups-claim-type: groups
+
+# How long state tokens remain valid, in minutes (default: 10)
+oauth2-max-state-validity: 10
+
+# Make OAuth2 the primary authentication method
 extension-priority: oauth2
 ```
 
-3. Restart the Guacamole server (typically Tomcat):
+### Property reference
 
-``` sudo systemctl restart tomcat9 ```
+| Property | Required | Default | Description |
+|---|---|---|---|
+| `oauth2-authorization-endpoint` | Yes | — | IdP authorization URL |
+| `oauth2-token-endpoint` | Yes | — | IdP token exchange URL |
+| `oauth2-user-info-endpoint` | Yes | — | IdP userinfo URL |
+| `oauth2-client-id` | Yes | — | OAuth2 client ID |
+| `oauth2-client-secret` | Yes | — | OAuth2 client secret |
+| `oauth2-redirect-uri` | Yes | — | Redirect URI (must match IdP configuration) |
+| `oauth2-scope` | No | `email profile` | Space-separated scopes |
+| `oauth2-username-claim-type` | No | `username` | Userinfo claim for the Guacamole username |
+| `oauth2-groups-claim-type` | No | `groups` | Userinfo claim for group memberships |
+| `oauth2-max-state-validity` | No | `10` | State token validity in minutes |
+
+### TLS with internal CAs
+
+If your IdP uses a certificate signed by an internal CA, you must import the CA into the JVM truststore used by Guacamole:
+
+```bash
+keytool -importcert -noprompt -trustcacerts \
+  -alias my-internal-ca \
+  -file /path/to/ca.crt \
+  -keystore /path/to/custom-cacerts \
+  -storepass changeit
+```
+
+Then set the JVM truststore via `CATALINA_OPTS`:
+
+```
+CATALINA_OPTS="-Djavax.net.ssl.trustStore=/path/to/custom-cacerts -Djavax.net.ssl.trustStorePassword=changeit"
+```
+
+## Building
+
+Requires Maven 3.x and Java 11+.
+
+The extension depends on `guacamole-auth-sso-base`, which is not published to Maven Central. Extract it from a running Guacamole 1.6.0 installation:
+
+```bash
+# Extract SSO base from the bundled OpenID extension
+jar xf /path/to/guacamole-auth-sso-openid.jar guacamole-auth-sso-base-1.6.0.jar
+
+# Install into local Maven repository
+mvn install:install-file \
+  -Dfile=guacamole-auth-sso-base-1.6.0.jar \
+  -DgroupId=org.apache.guacamole \
+  -DartifactId=guacamole-auth-sso-base \
+  -Dversion=1.6.0 \
+  -Dpackaging=jar \
+  -DgeneratePom=true
+
+# Build
+mvn clean package
+```
+
+The built JAR is at `target/guacamole-auth-sso-oauth2-1.6.0.jar`.
+
+A `build.sh` script is also provided for building via a containerized Maven environment (requires `kubectl`).
+
+## Security
+
+- **CSRF protection** — cryptographically random state tokens are generated for each login attempt and validated on callback (single-use, time-limited)
+- **Server-side token exchange** — the client secret and access token never reach the browser
+- **No token logging** — userinfo responses and token payloads are not written to logs
+- **Connection timeouts** — HTTP calls to the IdP have 10-second connect and read timeouts
+
+## License
+
+Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
