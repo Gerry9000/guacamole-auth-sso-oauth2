@@ -1,6 +1,6 @@
 {
 
-    "guacamoleVersion" : "1.5.5",
+    "guacamoleVersion" : "1.6.0",
 
     "name"      : "OAuth2 Authentication Extension",
     "namespace" : "oauth2",
@@ -31,7 +31,7 @@
     ],
 
     "js" : [
-        "oauth2.min.js"
+        "transformToken.js"
     ]
 
 }
