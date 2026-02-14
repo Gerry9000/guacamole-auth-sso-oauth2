@@ -4,6 +4,18 @@ An OAuth2 Authorization Code Flow extension for [Apache Guacamole](https://guaca
 
 Guacamole's bundled OpenID extension only supports the implicit flow (`response_type=id_token`). This extension implements the authorization code flow (`response_type=code`), which is the recommended approach for server-side applications per [OAuth 2.0 Security Best Practices](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics).
 
+## Why this extension?
+
+Guacamole's built-in OpenID extension has several open issues that prevent it from working with many identity providers:
+
+- **[GUACAMOLE-1200](https://issues.apache.org/jira/browse/GUACAMOLE-1200)** — No authorization code flow. The bundled extension implements only the OAuth2 implicit flow. The implicit flow is [deprecated by the IETF](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics#section-2.1.2), and many modern IdPs (Kanidm, some Keycloak configurations) refuse to issue tokens via implicit flow entirely.
+
+- **[GUACAMOLE-1094](https://issues.apache.org/jira/browse/GUACAMOLE-1094)** — Hard-coded `response_type=id_token`. The bundled extension cannot be configured to use `response_type=code` or `response_type=token`, causing failures with providers like AWS Cognito, GCP Identity Platform, and others that reject the `id_token` response type.
+
+- **[GUACAMOLE-805](https://issues.apache.org/jira/browse/GUACAMOLE-805)** — Redirect loop when the `id_token` parameter is not the first fragment parameter. The bundled extension's client-side token parsing assumed a specific parameter ordering in the URL fragment, causing infinite redirect loops with some IdPs. (Fixed in Guacamole 1.2.0 for `id_token`, but this extension avoids the class of issue entirely by using server-side code exchange instead of client-side fragment parsing.)
+
+This extension addresses all three issues by implementing the standard authorization code flow with server-side token exchange.
+
 ## How it works
 
 1. User visits Guacamole and is redirected to the OAuth2 authorization endpoint
