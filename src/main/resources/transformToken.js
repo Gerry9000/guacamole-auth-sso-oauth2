@@ -19,12 +19,12 @@
 
 /**
  * Before AngularJS routing takes effect, reformat the URL fragment
- * from the format used by OAuth2 Connect ("#param1=value1&param2=value2&...")
+ * from the format used by OAuth2 ("#param1=value1&param2=value2&...")
  * to the format used by AngularJS ("#/?param1=value1&param2=value2&...") such
  * that the client side of Guacamole's authentication system will automatically
- * forward the "id_token" value for server-side validation.
- * 
- * Note that not all OAuth2 identity providers will include the "id_token"
+ * forward the "code" value for server-side token exchange.
+ *
+ * Note that not all OAuth2 identity providers will include the "code"
  * parameter in the first position; it may occur after several other parameters
  * within the fragment.
  */

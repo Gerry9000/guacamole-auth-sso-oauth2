@@ -26,106 +26,130 @@
     <groupId>org.apache.guacamole</groupId>
     <artifactId>guacamole-auth-sso-oauth2</artifactId>
     <packaging>jar</packaging>
-    <version>1.5.5</version>
+    <version>1.6.0</version>
     <name>guacamole-auth-sso-oauth2</name>
+    <description>OAuth2 Authorization Code Flow extension for Apache Guacamole 1.6.0</description>
     <url>http://guacamole.apache.org/</url>
 
-    <parent>
-        <groupId>org.apache.guacamole</groupId>
-        <artifactId>guacamole-auth-sso</artifactId>
-        <version>1.5.5</version>
-        <relativePath>../../</relativePath>
-    </parent>
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <guacamole.version>1.6.0</guacamole.version>
+    </properties>
 
     <build>
         <plugins>
-
-            <!-- JS/CSS Minification Plugin -->
             <plugin>
-                <groupId>com.github.buckelieg</groupId>
-                <artifactId>minify-maven-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>11</source>
+                    <target>11</target>
+                </configuration>
+            </plugin>
+
+            <!-- Shade the SSO base JAR into our extension so its classes
+                 and shared resources (sso-providers.html, sso-providers.css,
+                 translation files) are available at runtime. The nested
+                 dependency JARs inside the SSO base are excluded since
+                 those libraries are already on the parent classloader. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
                 <executions>
                     <execution>
-                        <id>default-cli</id>
-                        <configuration>
-                            <charset>UTF-8</charset>
-
-                            <webappSourceDir>${basedir}/src/main/resources</webappSourceDir>
-                            <webappTargetDir>${project.build.directory}/classes</webappTargetDir>
-
-                            <jsSourceDir>/</jsSourceDir>
-                            <jsTargetDir>/</jsTargetDir>
-                            <jsFinalFile>oauth2.js</jsFinalFile>
-
-                            <jsSourceFiles>
-                                <jsSourceFile>license.txt</jsSourceFile>
-                            </jsSourceFiles>
-
-                            <jsSourceIncludes>
-                                <jsSourceInclude>**/*.js</jsSourceInclude>
-                            </jsSourceIncludes>
-
-                            <!-- Do not minify and include tests -->
-                            <jsSourceExcludes>
-                                <jsSourceExclude>**/*.test.js</jsSourceExclude>
-                            </jsSourceExcludes>
-                            <jsEngine>CLOSURE</jsEngine>
-
-                            <!-- Disable warnings for JSDoc annotations -->
-                            <closureWarningLevels>
-                                <misplacedTypeAnnotation>OFF</misplacedTypeAnnotation>
-                                <nonStandardJsDocs>OFF</nonStandardJsDocs>
-                            </closureWarningLevels>
-
-                        </configuration>
+                        <phase>package</phase>
                         <goals>
-                            <goal>minify</goal>
+                            <goal>shade</goal>
                         </goals>
+                        <configuration>
+                            <artifactSet>
+                                <includes>
+                                    <include>org.apache.guacamole:guacamole-auth-sso-base</include>
+                                </includes>
+                            </artifactSet>
+                            <filters>
+                                <filter>
+                                    <artifact>org.apache.guacamole:guacamole-auth-sso-base</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/**</exclude>
+                                        <exclude>*.jar</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
-
         </plugins>
     </build>
 
     <dependencies>
 
-        <!-- Guacamole Extension API -->
-
-        <!-- Core SSO support -->
-
-        <!-- Java implementation of JOSE (jose.4.j) -->
+        <!-- Guacamole Extension API (provided by Guacamole at runtime) -->
         <dependency>
-            <groupId>org.bitbucket.b_c</groupId>
-            <artifactId>jose4j</artifactId>
-            <version>0.9.6</version>
+            <groupId>org.apache.guacamole</groupId>
+            <artifactId>guacamole-ext</artifactId>
+            <version>${guacamole.version}</version>
+            <scope>provided</scope>
         </dependency>
 
-        <!-- Guice -->
+        <!-- SSO Base (installed from Guacamole image via build script).
+             Scope is compile because the SSO base classes and resources
+             (CSS, HTML, translations) are not on the parent classloader;
+             they are normally bundled inside the OpenID extension JAR
+             which we are replacing. The shade plugin merges them into
+             our output JAR. -->
+        <dependency>
+            <groupId>org.apache.guacamole</groupId>
+            <artifactId>guacamole-auth-sso-base</artifactId>
+            <version>${guacamole.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Jackson JSON (provided by Guacamole at runtime) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.19.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Guice (provided by Guacamole at runtime) -->
         <dependency>
             <groupId>com.google.inject</groupId>
             <artifactId>guice</artifactId>
+            <version>5.1.0</version>
+            <scope>provided</scope>
         </dependency>
 
-        <!-- Java servlet API -->
+        <!-- Java Servlet API (provided by Tomcat) -->
         <dependency>
             <groupId>javax.servlet</groupId>
-            <artifactId>servlet-api</artifactId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>4.0.1</version>
+            <scope>provided</scope>
         </dependency>
 
-        <!-- JAX-RS Annotations -->
+        <!-- JAX-RS API (provided by Guacamole at runtime) -->
         <dependency>
             <groupId>javax.ws.rs</groupId>
-            <artifactId>jsr311-api</artifactId>
+            <artifactId>javax.ws.rs-api</artifactId>
+            <version>2.1.1</version>
+            <scope>provided</scope>
         </dependency>
+
+        <!-- SLF4J (provided by Guacamole at runtime) -->
         <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>guacamole-ext</artifactId>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.16</version>
+            <scope>provided</scope>
         </dependency>
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>guacamole-auth-sso-base</artifactId>
-        </dependency>
+
     </dependencies>
 
 </project>

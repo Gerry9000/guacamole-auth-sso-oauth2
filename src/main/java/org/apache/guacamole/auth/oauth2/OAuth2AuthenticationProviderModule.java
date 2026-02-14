@@ -22,6 +22,8 @@ import com.google.inject.AbstractModule;
 import org.apache.guacamole.auth.oauth2.conf.ConfigurationService;
 import org.apache.guacamole.auth.oauth2.token.StateService;
 import org.apache.guacamole.auth.oauth2.token.TokenValidationService;
+import org.apache.guacamole.environment.Environment;
+import org.apache.guacamole.environment.LocalEnvironment;
 
 /**
  * Guice module which configures OAuth2-specific injections.
@@ -30,6 +32,10 @@ public class OAuth2AuthenticationProviderModule extends AbstractModule {
 
     @Override
     protected void configure() {
+        // Guacamole ortamini bagla — guacamole.properties dosyasini okumak icin gerekli
+        // Bind the Guacamole environment — required to read guacamole.properties
+        bind(Environment.class).toInstance(LocalEnvironment.getInstance());
+
         bind(ConfigurationService.class);
         bind(StateService.class);
         bind(TokenValidationService.class);

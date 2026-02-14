@@ -39,12 +39,18 @@ import org.apache.guacamole.language.TranslatableMessage;
 import org.apache.guacamole.net.auth.Credentials;
 import org.apache.guacamole.net.auth.credentials.CredentialsInfo;
 import org.apache.guacamole.net.auth.credentials.GuacamoleInvalidCredentialsException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Service that authenticates Guacamole users by processing OAuth2 tokens.
+ * Service that authenticates Guacamole users via the OAuth2 Authorization
+ * Code flow. Redirects users to the IdP, receives the authorization code
+ * callback, exchanges it for an access token, and retrieves user info.
  */
 @Singleton
 public class AuthenticationProviderService implements SSOAuthenticationProviderService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthenticationProviderService.class);
 
     /**
      * The standard HTTP parameter which will be included within the URL by all
@@ -65,7 +71,7 @@ public class AuthenticationProviderService implements SSOAuthenticationProviderS
     private StateService stateService;
 
     /**
-     * Service for validating received ID tokens.
+     * Service for exchanging authorization codes and retrieving user info.
      */
     @Inject
     private TokenValidationService tokenService;
@@ -86,13 +92,28 @@ public class AuthenticationProviderService implements SSOAuthenticationProviderS
         HttpServletRequest request = credentials.getRequest();
         if (request != null) {
             String authorizationCode = request.getParameter("code");
+            String state = request.getParameter("state");
 
             if (authorizationCode != null) {
+
+                // Validate state parameter to prevent CSRF
+                if (!stateService.isValid(state)) {
+                    logger.warn("OAuth2 callback with invalid or expired state parameter");
+                    throw new GuacamoleInvalidCredentialsException(
+                            "Invalid OAuth2 state. Please try logging in again.",
+                            new CredentialsInfo(Arrays.asList(new Field[]{
+                                new RedirectField("code", getLoginURI(),
+                                new TranslatableMessage("LOGIN.INFO_IDP_REDIRECT_PENDING"))
+                            })));
+                }
+
                 try {
-                    // Authorization kodu ile access token al
+                    // Exchange authorization code for access token
+                    // Yetkilendirme kodu ile access token al
                     String accessToken = tokenService.exchangeCodeForToken(authorizationCode);
 
-                    // Access token ile kullanıcı bilgilerini al
+                    // Retrieve user info from the IdP
+                    // Access token ile kullanici bilgilerini al
                     OAuth2UserInfo userInfo = tokenService.getUserInfoFromToken(accessToken);
                     if (userInfo != null) {
                         username = userInfo.getUsername();
@@ -100,13 +121,13 @@ public class AuthenticationProviderService implements SSOAuthenticationProviderS
                     }
 
                 } catch (Exception e) {
-                    e.printStackTrace(); // catalina.out için
-                    throw new GuacamoleInvalidCredentialsException("Failed to validate token or fetch user info.",
+                    logger.error("OAuth2 authentication failed: {}", e.getMessage());
+                    throw new GuacamoleInvalidCredentialsException(
+                            "Failed to validate token or fetch user info.",
                             new CredentialsInfo(Arrays.asList(new Field[]{
-                        new RedirectField("code", getLoginURI(),
-                        new TranslatableMessage("LOGIN.INFO_IDP_REDIRECT_PENDING"))
-                    }))
-                    );
+                                new RedirectField("code", getLoginURI(),
+                                new TranslatableMessage("LOGIN.INFO_IDP_REDIRECT_PENDING"))
+                            })));
                 }
             }
         }
@@ -117,13 +138,14 @@ public class AuthenticationProviderService implements SSOAuthenticationProviderS
             return authenticatedUser;
         }
 
-        // Kod yoksa kullanıcıyı tekrar yetkilendirme sayfasına gönder
-        throw new GuacamoleInvalidCredentialsException("Invalid login. Authorization code is missing or invalid.",
+        // No authorization code present — redirect to IdP
+        // Kod yoksa kullaniciyi tekrar yetkilendirme sayfasina gonder
+        throw new GuacamoleInvalidCredentialsException(
+                "Invalid login. Authorization code is missing or invalid.",
                 new CredentialsInfo(Arrays.asList(new Field[]{
-            new RedirectField("code", getLoginURI(),
-            new TranslatableMessage("LOGIN.INFO_IDP_REDIRECT_PENDING"))
-        }))
-        );
+                    new RedirectField("code", getLoginURI(),
+                    new TranslatableMessage("LOGIN.INFO_IDP_REDIRECT_PENDING"))
+                })));
     }
 
     @Override
